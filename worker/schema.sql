@@ -81,6 +81,13 @@ CREATE TABLE IF NOT EXISTS push_registration_attempts (
   PRIMARY KEY (client_key, day)
 );
 
+CREATE TABLE IF NOT EXISTS neis_meal_cache (
+  day TEXT PRIMARY KEY,
+  payload_json TEXT NOT NULL DEFAULT '',
+  expires_at INTEGER NOT NULL DEFAULT 0,
+  lease_until INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS push_deliveries (
   subscription_id INTEGER NOT NULL REFERENCES push_subscriptions(id) ON DELETE CASCADE,
   notice_key TEXT NOT NULL,

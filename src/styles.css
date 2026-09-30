@@ -23,9 +23,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .site-header { border-bottom: 1px solid var(--border); background: #fff; }
 .header-inner { position: relative; height: 98px; max-width: 1680px; padding: 0 60px; margin: auto; display: flex; align-items: center; justify-content: space-between; }
-.site-title { color: var(--navy); text-decoration: none; font-size: 28px; line-height: 1.2; font-weight: 800; letter-spacing: -.055em; white-space: nowrap; }
+.site-title { color: var(--navy); text-decoration: none; font-size: 24px; line-height: 1.2; font-weight: 800; letter-spacing: -.055em; white-space: nowrap; }
 .top-nav { position: absolute; inset-block: 0; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; gap: 36px; }
-.top-nav button { position: relative; border: 0; background: none; padding: 0 8px; color: var(--muted); font-size: 19px; font-weight: 600; white-space: nowrap; }
+.top-nav button { position: relative; border: 0; background: none; padding: 0 8px; color: var(--muted); font-size: 17px; font-weight: 600; white-space: nowrap; }
 .top-nav button.active { color: var(--blue); font-weight: 700; }
 .top-nav button.active::after { content: ""; position: absolute; height: 4px; background: var(--blue); border-radius: 4px 4px 0 0; bottom: 0; left: 0; right: 0; }
 .admin-button, .secondary-button, .square-button { min-height: 45px; border: 1px solid #b8c6da; background: #fff; color: #344969; border-radius: 8px; font-size: 16px; font-weight: 600; }
@@ -33,7 +33,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .admin-button:hover, .secondary-button:hover, .square-button:hover { border-color: #7e9ac4; background: #f8fbff; }
 .main-content { width: 100%; max-width: 1680px; margin: 0 auto; padding: 51px 60px 80px; flex: 1; }
 .page-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-bottom: 45px; }
-.page-heading-row h1 { margin: 0; font-size: 47px; font-weight: 800; letter-spacing: -.06em; line-height: 1.18; }
+.page-heading-row h1 { margin: 0; font-size: 39px; font-weight: 800; letter-spacing: -.06em; line-height: 1.18; }
 .search-box { width: min(424px, 40vw); height: 54px; border: 1px solid #b9c7dc; border-radius: 8px; display: flex; align-items: center; gap: 12px; color: #5b6d8b; padding: 0 16px; }
 .search-box:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px #e2efff; }
 .search-box input { min-width: 0; width: 100%; border: 0; outline: 0; font-size: 18px; color: var(--navy); background: transparent; }
@@ -148,6 +148,24 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .state-message { color: var(--muted); font-size: 17px; display: flex; align-items: center; gap: 18px; }
 .text-button { border: 0; background: none; color: var(--blue); font-weight: 700; }
 
+.meals-heading { align-items: end; margin-bottom: 32px; }
+.meals-eyebrow { margin: 0 0 7px; color: var(--blue); font-size: 13px; font-weight: 700; }
+.meals-date { margin: 11px 0 0; color: var(--muted); font-size: 17px; }
+.meals-refresh { padding: 0 18px; white-space: nowrap; }
+.meal-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 17px; }
+.meal-card { min-height: 280px; border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 24px 25px 21px; display: flex; flex-direction: column; }
+.meal-card-head { display: flex; align-items: center; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid #edf1f6; }
+.meal-number { color: var(--blue); font-size: 13px; font-weight: 800; }
+.meal-card h2 { margin: 0; font-size: 20px; letter-spacing: -.035em; }
+.meal-dishes { list-style: none; padding: 19px 0 0; margin: 0; display: flex; flex-direction: column; gap: 9px; }
+.meal-dishes li { color: #2c3d5a; font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+.meal-empty { margin: 23px 0 0; color: var(--muted); font-size: 15px; }
+.meal-calories { margin: auto 0 0; padding-top: 22px; color: #7b8ba4; font-size: 13px; }
+.meals-status { border: 1px solid #dbe5f1; border-radius: 11px; background: #f8faff; padding: 20px 23px; color: #466184; display: flex; flex-direction: column; gap: 6px; font-size: 15px; }
+.meals-status strong { color: #20385c; font-size: 17px; }
+.meals-status-error { border-color: #e7dbd5; background: #fffaf7; color: #7b5b4c; }
+.meals-source { margin: 24px 0 0; color: #8190a5; font-size: 13px; }
+
 .notification-settings { margin-top: 43px; border: 1px solid var(--border); border-radius: 12px; padding: 25px 28px; background: #f9fbfe; display: flex; justify-content: space-between; align-items: center; gap: 24px; }
 .notification-kicker { margin: 0 0 5px !important; color: var(--blue) !important; font-size: 12px !important; font-weight: 800; letter-spacing: .07em; }
 .notification-settings h2 { margin: 0 0 8px; font-size: 21px; letter-spacing: -.04em; }
@@ -161,9 +179,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .site-footer { width: 100%; border-top: 1px solid #e7ecf3; background: #fcfdff; }
 .footer-inner { max-width: 1680px; margin: auto; padding: 20px 60px 25px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
-.coffee-link { color: #687994; font-size: 12px; text-decoration: none; }
+.coffee-link { color: #687994; font-size: 17px; text-decoration: none; }
 .coffee-link:hover { color: var(--blue); text-decoration: underline; }
-.footer-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 16px; color: #8a98ad; font-size: 11px; }
+.footer-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 16px; color: #8a98ad; font-size: 15.5px; }
 .footer-meta a { color: inherit; text-decoration: none; }
 .footer-meta a:hover { color: var(--blue); text-decoration: underline; }
 
@@ -172,7 +190,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .support-back:hover { color: var(--blue); }
 .support-panel { margin-top: 28px; border: 1px solid var(--border); border-radius: 17px; padding: 44px 50px 50px; box-shadow: 0 8px 30px #0a1b3e08; }
 .support-eyebrow { margin: 0 0 12px; color: var(--blue); font-size: 13px; font-weight: 800; letter-spacing: .04em; }
-.support-panel h1 { margin: 0 0 13px; font-size: 36px; letter-spacing: -.055em; }
+.support-panel h1 { margin: 0 0 13px; font-size: 31px; letter-spacing: -.055em; }
 .support-intro { color: var(--muted); font-size: 16px; line-height: 1.6; margin: 0 0 32px; }
 .donation-detail { display: flex; flex-direction: column; gap: 7px; border: 1px solid #cfe0f9; background: #f4f8ff; border-radius: 11px; padding: 20px 23px; }
 .donation-detail span { color: #456596; font-size: 13px; font-weight: 700; }
@@ -184,13 +202,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 @media (max-width: 800px) {
   .header-inner { height: 110px; padding: 0 22px; align-items: flex-start; }
-  .site-title { font-size: 21px; margin-top: 20px; }
+  .site-title { font-size: 18px; margin-top: 20px; }
   .admin-button { margin-top: 16px; min-height: 38px; padding: 0 13px; font-size: 14px; }
   .top-nav { top: auto; bottom: 0; height: 49px; gap: 36px; }
-  .top-nav button { font-size: 16px; }
+  .top-nav button { font-size: 15px; }
   .main-content { padding: 35px 22px 65px; }
   .page-heading-row { margin-bottom: 27px; }
-  .page-heading-row h1 { font-size: 34px; }
+  .page-heading-row h1 { font-size: 29px; }
   .search-box { width: min(230px, 46vw); height: 44px; padding: 0 11px; }
   .search-box input { font-size: 15px; }
   .filter-toolbar { padding-bottom: 13px; }
@@ -218,13 +236,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .footer-inner { padding-inline: 22px; flex-direction: column; align-items: flex-start; }
   .notification-settings { flex-direction: column; align-items: flex-start; }
   .notification-action { align-items: flex-start; }
+  .meal-grid { grid-template-columns: 1fr; gap: 12px; }
+  .meal-card { min-height: 0; }
 }
 
 @media (max-width: 520px) {
   .main-content { padding-inline: 16px; }
   .header-inner { padding-inline: 16px; }
-  .site-title { font-size: 19px; }
-  .page-heading-row h1 { font-size: 31px; }
+  .site-title { font-size: 17px; }
+  .page-heading-row h1 { font-size: 27px; }
   .search-box { width: 48vw; }
   .upload-button { font-size: 0; min-width: 40px; padding: 0 10px; }
   .upload-button svg { margin: 0; }
@@ -252,9 +272,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .gallery-thumb { flex-basis: 70px; height: 55px; }
   .footer-inner { padding-inline: 16px; }
   .support-panel { padding: 29px 22px 34px; }
-  .support-panel h1 { font-size: 29px; }
+  .support-panel h1 { font-size: 25px; }
   .donation-detail strong { font-size: 17px; }
   .notification-settings { padding: 20px 17px; }
+  .meals-heading { align-items: end; }
+  .meals-date { font-size: 14px; }
+  .meals-refresh { min-height: 38px; font-size: 13px; padding-inline: 11px; }
+  .meal-card { padding: 19px 18px 20px; }
+  .meal-card h2 { font-size: 18px; }
+  .meal-dishes li { font-size: 15px; }
 }
 
 @media (prefers-reduced-motion: no-preference) {

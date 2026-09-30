@@ -20,7 +20,7 @@ The secret is a server-side verifier. Login is limited to eight failed attempts 
 
 Apply `worker/schema.sql` to local and remote D1 before starting the Worker. The migration is idempotent and seeds the 12 specified subjects and their 20 teacher assignments. The schema does **not** migrate existing records or files from the local SQLite/files directory; that is a separate data migration.
 
-The additive tables `event_notification_settings`, `push_subscriptions`, `push_deliveries`, and `push_registration_attempts` must be applied to existing D1 before deploying the updated Worker. The default for an event without a settings row is notifications enabled. Calendar entries imported from the draft academic schedule should have `notify_enabled: false`; ordinary manually entered events default to true.
+The additive tables `event_notification_settings`, `push_subscriptions`, `push_deliveries`, `push_registration_attempts`, and `neis_meal_cache` must be applied to existing D1 before deploying the updated Worker. The default for an event without a settings row is notifications enabled. Calendar entries imported from the draft academic schedule should have `notify_enabled: false`; ordinary manually entered events default to true.
 
 ## API and upload limits
 
@@ -32,6 +32,7 @@ The additive tables `event_notification_settings`, `push_subscriptions`, `push_d
 - `GET /api/files/:id` to view, `?download=1` to download
 - `POST /api/events`, `PUT /api/events/:id`, `DELETE /api/events/:id`
 - `GET /api/push/public-key`, `POST /api/push/subscriptions`, `DELETE /api/push/subscriptions`
+- `GET /api/meals/today`: read-only Korean-date breakfast, lunch, and dinner from NEIS
 
 An upload accepts up to 24 files, 20 MiB per file, 64 MiB total per request. File extensions and magic bytes must agree for PDF, JPEG, PNG, or WebP. Attachment digests let the append endpoint skip byte-identical files already in the material; older imported attachments are hashed on first append. Upload metadata is committed to D1 only after R2 writes succeed; failed uploads attempt to remove their R2 objects. D1 attachment rows and digests use one batch transaction. Deleting a material removes its D1 records, then its R2 objects.
 
@@ -43,7 +44,7 @@ The source file and seed schema can be syntax-checked without a Cloudflare accou
 
 Opt-in stores the browser push endpoint and encryption keys in D1. `push_deliveries` claims each `daily:YYYY-MM-DD` digest for each subscription to avoid duplicate sends. An uncertain network result keeps its claim because the push service may already have accepted it. Explicitly rejected sends release their claim; expired subscriptions (404/410) are deleted. Unsubscribing deletes the endpoint and its delivery records. Registration is capped at **45 devices** globally and **25 new devices per client IP per Korean calendar day**; excess registrations return HTTP 429. This keeps the daily NEIS request plus push requests within the Workers Free 50-external-subrequest limit while allowing a class to enroll from shared school Wi-Fi. Multiple browsers/devices for one student each use a slot. Existing endpoint re-registration and removal require the subscription's `auth` secret.
 
-Without `NEIS_API_KEY`, the scheduled job still sends due calendar reminders and skips the meal section. The official NEIS documentation requires an issued key for live use; a no-key/sample query is not the operational credential. No meal notification is sent on missing data or a NEIS error. The integration sends one meal query for the current Korean calendar day and does not poll.
+Without `NEIS_API_KEY`, the scheduled job still sends due calendar reminders and skips the meal section. `GET /api/meals/today` returns a structured `unconfigured` response (HTTP 503). The official NEIS documentation requires an issued key for live use; a no-key/sample query is not the operational credential. The endpoint returns `ok` or `no_meal` (HTTP 200), or `error` (HTTP 502) without exposing the key. All statuses include the Korean date and three meal slots; missing meals have `available: false`. The D1 cache is shared with the 07:00 push job, with one-hour normal, 30-minute no-meal, and five-minute error lifetimes. A 30-second refresh lease limits concurrent NEIS calls. No meal notification is sent on missing data or a NEIS error.
 
 Generate a VAPID P-256 pair privately. For example, a one-off local Node script can call `crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'}, true, ['sign','verify'])`, export the public key as `raw`, export the private key as `jwk`, encode the raw public bytes with base64url, then set the two values with `wrangler secret put VAPID_PUBLIC_KEY` and `wrangler secret put VAPID_PRIVATE_JWK`. Do not commit key output, `.dev.vars`, or the NEIS key. Keep the same VAPID pair after deployment so existing browser subscriptions remain valid.
 

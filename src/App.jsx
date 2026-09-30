@@ -4,12 +4,14 @@ import Modal from './components/Modal.jsx';
 import Materials from './components/Materials.jsx';
 import Calendar from './components/Calendar.jsx';
 import NotificationSettings from './components/NotificationSettings.jsx';
+import Meals from './components/Meals.jsx';
 
 const GITHUB_REPOSITORY_URL = 'https://github.com/fakeminjun7321/2-4cloud';
 
 function routeFromPath() {
   if (window.location.pathname === '/support') return 'support';
   if (window.location.pathname === '/calendar') return 'calendar';
+  if (window.location.pathname === '/meals') return 'meals';
   return 'materials';
 }
 
@@ -122,12 +124,13 @@ export default function App() {
           <nav className="top-nav" aria-label="주 메뉴">
             <button className={tab === 'materials' ? 'active' : ''} onClick={() => navigate('/')} aria-current={tab === 'materials' ? 'page' : undefined}>자료실</button>
             <button className={tab === 'calendar' ? 'active' : ''} onClick={() => navigate('/calendar')} aria-current={tab === 'calendar' ? 'page' : undefined}>캘린더</button>
+            <button className={tab === 'meals' ? 'active' : ''} onClick={() => navigate('/meals')} aria-current={tab === 'meals' ? 'page' : undefined}>급식</button>
           </nav>
           <button className="admin-button" onClick={() => data.admin ? logout() : setLoginOpen(true)}>{data.admin ? '관리 종료' : '관리'}</button>
         </div>
       </header>
       <main className="main-content">
-        {tab === 'support' ? <SupportPage onBack={() => navigate('/')} /> : loading ? <p className="state-message">불러오는 중…</p> : error ? <div className="state-message" role="alert">{error}<button className="text-button" onClick={() => { setError(''); setLoading(true); refresh().catch((failure) => { setError(failure.message); setLoading(false); }); }}>다시 시도</button></div> : tab === 'materials' ?
+        {tab === 'support' ? <SupportPage onBack={() => navigate('/')} /> : tab === 'meals' ? <Meals /> : loading ? <p className="state-message">불러오는 중…</p> : error ? <div className="state-message" role="alert">{error}<button className="text-button" onClick={() => { setError(''); setLoading(true); refresh().catch((failure) => { setError(failure.message); setLoading(false); }); }}>다시 시도</button></div> : tab === 'materials' ?
           <Materials data={data} refresh={refresh} notify={setMessage} /> :
           <><Calendar data={data} refresh={refresh} notify={setMessage} /><NotificationSettings /></>}
       </main>

@@ -1,6 +1,6 @@
 // Cloudflare bindings: DB (D1), FILES (R2), ASSETS (static build),
 // ADMIN_PASSWORD_SHA256 (secret; SHA-256 hex of the UTF-8 admin password).
-import { pushApi, sendDueNotifications } from './push.js';
+import { mealsApi, pushApi, sendDueNotifications } from './push.js';
 const SESSION_SECONDS = 12 * 60 * 60;
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const MAX_REQUEST_BYTES = 64 * 1024 * 1024;
@@ -478,6 +478,10 @@ async function deleteEvent(request, env, eventId) {
 async function api(request, env, path) {
   const method = request.method;
   if (!['GET', 'HEAD'].includes(method)) requireSameOrigin(request);
+  if (path.startsWith('/api/meals/')) {
+    const mealResponse = await mealsApi(request, env, path);
+    if (mealResponse) return mealResponse;
+  }
   if (path.startsWith('/api/push/')) {
     const pushResponse = await pushApi(request, env, path);
     if (pushResponse) return pushResponse;

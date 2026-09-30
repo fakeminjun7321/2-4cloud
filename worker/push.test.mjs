@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { webcrypto } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import { pushApi, testHelpers } from './push.js';
+import { getMealsForDay, pushApi, testHelpers } from './push.js';
 
 const crypto = webcrypto;
 const encoder = new TextEncoder();
@@ -17,6 +17,16 @@ function concat(...parts) {
 
 function encode64(bytes) {
   return Buffer.from(bytes).toString('base64url');
+}
+
+function localDb() {
+  const sqlite = new DatabaseSync(':memory:');
+  sqlite.exec(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
+  const db = { prepare(sql) { return { bind(...args) { return {
+    first: async () => sqlite.prepare(sql).get(...args) || null,
+    run: async () => ({ meta: { changes: sqlite.prepare(sql).run(...args).changes } }),
+  }; } }; } };
+  return { sqlite, db };
 }
 
 test('aes128gcm payload can be decrypted by a subscriber', async () => {
@@ -69,37 +79,73 @@ test('Korea date and event offsets cross a UTC date boundary', () => {
 test('NEIS meals are fetched once for the Korean day and rendered as plain text', async () => {
   const originalFetch = globalThis.fetch;
   let requestedUrl;
+  let requests = 0;
   globalThis.fetch = async (url) => {
+    requests += 1;
     requestedUrl = new URL(url);
     return Response.json({ mealServiceDietInfo: [
       { head: [] },
       { row: [
-        { MLSV_YMD: '20260930', MMEAL_SC_CODE: '1', DDISH_NM: '밥<br/>국 (5.6)' },
-        { MLSV_YMD: '20260930', MMEAL_SC_CODE: '2', DDISH_NM: '면<br />과일' },
+        { MLSV_YMD: '20260930', ATPT_OFCDC_SC_CODE: 'D10', SD_SCHUL_CODE: '7240060',
+          MMEAL_SC_CODE: '1', DDISH_NM: '*밥<br/>국 (5.6)', CAL_INFO: '800 Kcal' },
+        { MLSV_YMD: '20260930', ATPT_OFCDC_SC_CODE: 'D10', SD_SCHUL_CODE: '7240060',
+          MMEAL_SC_CODE: '2', DDISH_NM: '면<br />과일' },
       ] },
     ] });
   };
+  const { sqlite, db } = localDb();
   try {
-    const notice = await testHelpers.fetchNeisMeals({ NEIS_API_KEY: 'test-only',
-      NEIS_EDUCATION_OFFICE_CODE: 'D10', NEIS_SCHOOL_CODE: '7240060' }, '2026-09-30');
+    const env = { DB: db, NEIS_API_KEY: 'test-only',
+      NEIS_EDUCATION_OFFICE_CODE: 'D10', NEIS_SCHOOL_CODE: '7240060' };
+    const mealData = await getMealsForDay(env, '2026-09-30');
+    const notice = await testHelpers.fetchNeisMeals(env, '2026-09-30');
+    assert.equal(requests, 1); // notice and page share the D1 cache
     assert.equal(requestedUrl.hostname, 'open.neis.go.kr');
     assert.equal(requestedUrl.searchParams.get('MLSV_YMD'), '20260930');
     assert.equal(requestedUrl.searchParams.get('SD_SCHUL_CODE'), '7240060');
+    assert.equal(mealData.status, 'ok');
+    assert.equal(mealData.meals.length, 3);
+    assert.deepEqual(mealData.meals[0].dishes, ['밥', '국 (5.6)']);
+    assert.equal(mealData.meals[0].calories, '800 Kcal');
+    assert.equal(mealData.meals[2].available, false);
     assert.match(notice.body, /아침: 밥, 국/);
     assert.match(notice.body, /점심: 면, 과일/);
     assert.ok(!notice.body.includes('<'));
   } finally {
     globalThis.fetch = originalFetch;
+    sqlite.close();
+  }
+});
+
+test('missing NEIS key, no meal, and provider error remain distinct and cached', async () => {
+  const { sqlite, db } = localDb();
+  const originalFetch = globalThis.fetch;
+  const originalError = console.error;
+  let calls = 0;
+  const env = { DB: db, NEIS_API_KEY: 'test-only',
+    NEIS_EDUCATION_OFFICE_CODE: 'D10', NEIS_SCHOOL_CODE: '7240060' };
+  try {
+    const missing = await getMealsForDay({ DB: db }, '2026-10-01');
+    assert.equal(missing.status, 'unconfigured');
+    assert.equal(missing.meals.length, 3);
+    globalThis.fetch = async () => { calls += 1; return Response.json({ RESULT: { CODE: 'INFO-200' } }); };
+    assert.equal((await getMealsForDay(env, '2026-10-01')).status, 'no_meal');
+    assert.equal((await getMealsForDay(env, '2026-10-01')).status, 'no_meal');
+    assert.equal(calls, 1);
+    globalThis.fetch = async () => { calls += 1; return new Response('', { status: 429 }); };
+    console.error = () => {};
+    assert.equal((await getMealsForDay(env, '2026-10-02')).status, 'error');
+    assert.equal((await getMealsForDay(env, '2026-10-02')).status, 'error');
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.error = originalError;
+    sqlite.close();
   }
 });
 
 test('new subscriptions are limited per IP and unsubscribe requires the auth secret', async () => {
-  const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'));
-  const db = { prepare(sql) { return { bind(...args) { return {
-    first: async () => sqlite.prepare(sql).get(...args) || null,
-    run: async () => ({ meta: { changes: sqlite.prepare(sql).run(...args).changes } }),
-  }; } }; } };
+  const { sqlite, db } = localDb();
   const vapid = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
   const browser = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
   const env = { DB: db,

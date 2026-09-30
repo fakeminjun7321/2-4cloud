@@ -281,8 +281,22 @@ function dueEventNotice(events) {
   return { title: '2-4 cloud · 일정 알림', body, url: '/calendar', tag: 'calendar-today', silent: true };
 }
 
-async function fetchNeisMeals(env, day) {
-  if (!env.NEIS_API_KEY || !env.NEIS_EDUCATION_OFFICE_CODE || !env.NEIS_SCHOOL_CODE) return null;
+const MEAL_NAMES = { '1': '아침', '2': '점심', '3': '저녁' };
+
+function emptyMeals() {
+  return Object.entries(MEAL_NAMES).map(([code, name]) => ({
+    code, name, available: false, dishes: [], calories: null,
+  }));
+}
+
+function cleanDish(value) {
+  return String(value).replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+    .replace(/^\s*\*/, '').replace(/\s+/g, ' ').trim();
+}
+
+async function fetchNeisMealRows(env, day) {
   const url = new URL('https://open.neis.go.kr/hub/mealServiceDietInfo');
   url.search = new URLSearchParams({
     KEY: env.NEIS_API_KEY, Type: 'json', pIndex: '1', pSize: '20',
@@ -291,7 +305,11 @@ async function fetchNeisMeals(env, day) {
     MLSV_YMD: day.replaceAll('-', ''),
   }).toString();
   const result = await fetch(url, { redirect: 'error' });
-  if (!result.ok) throw new Error(`NEIS HTTP ${result.status}`);
+  if (!result.ok) {
+    const error = new Error(`NEIS HTTP ${result.status}`);
+    if (result.status === 429 || result.status === 401 || result.status === 403) error.cooldownSeconds = 86400;
+    throw error;
+  }
   const declared = Number(result.headers.get('Content-Length'));
   if (Number.isFinite(declared) && declared > MAX_NEIS_BYTES) throw new Error('NEIS response too large');
   const reader = result.body?.getReader();
@@ -310,19 +328,84 @@ async function fetchNeisMeals(env, day) {
   }
   const value = JSON.parse(new TextDecoder().decode(concat(...chunks)));
   const rows = value.mealServiceDietInfo?.[1]?.row;
-  if (!Array.isArray(rows)) return null;
-  const meals = rows.filter((row) => row.MLSV_YMD === day.replaceAll('-', ''))
-    .sort((left, right) => Number(left.MMEAL_SC_CODE) - Number(right.MMEAL_SC_CODE));
-  if (!meals.length) return null;
-  const names = { '1': '아침', '2': '점심', '3': '저녁' };
-  const body = meals.map((row) => {
-    const label = names[String(row.MMEAL_SC_CODE)] || String(row.MMEAL_SC_NM || '급식');
-    const dishes = String(row.DDISH_NM || '').replace(/<br\s*\/?>/gi, ', ')
-      .replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim();
-    return `${label}: ${dishes}`;
-  }).filter((line) => !line.endsWith(': ')).join('\n');
+  if (!Array.isArray(rows)) {
+    const code = value.RESULT?.CODE || value.mealServiceDietInfo?.[0]?.head?.find((part) => part.RESULT)?.RESULT?.CODE;
+    if (code === 'INFO-200') return [];
+    const error = new Error(`NEIS result ${code || 'unexpected format'}`);
+    if (code) error.cooldownSeconds = 86400;
+    throw error;
+  }
+  return rows.filter((row) => row.MLSV_YMD === day.replaceAll('-', '')
+    && row.ATPT_OFCDC_SC_CODE === env.NEIS_EDUCATION_OFFICE_CODE
+    && row.SD_SCHUL_CODE === env.NEIS_SCHOOL_CODE);
+}
+
+function structuredMeals(rows) {
+  const byCode = new Map(rows.map((row) => [String(row.MMEAL_SC_CODE), row]));
+  return emptyMeals().map((meal) => {
+    const row = byCode.get(meal.code);
+    if (!row) return meal;
+    const dishes = String(row.DDISH_NM || '').split(/<br\s*\/?>/i).map(cleanDish).filter(Boolean);
+    return { ...meal, available: dishes.length > 0, dishes,
+      calories: typeof row.CAL_INFO === 'string' && row.CAL_INFO.trim() ? row.CAL_INFO.trim() : null };
+  });
+}
+
+export async function getMealsForDay(env, day) {
+  const base = { date: day, source: 'NEIS', meals: emptyMeals(), fetchedAt: null };
+  if (!env.NEIS_API_KEY || !env.NEIS_EDUCATION_OFFICE_CODE || !env.NEIS_SCHOOL_CODE) {
+    return { ...base, status: 'unconfigured', detail: '급식 정보 연결을 준비하고 있어요.' };
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const cached = await env.DB.prepare('SELECT payload_json, expires_at FROM neis_meal_cache WHERE day = ?')
+    .bind(day).first();
+  if (cached?.payload_json && cached.expires_at > now) return JSON.parse(cached.payload_json);
+  const lease = await env.DB.prepare(`INSERT INTO neis_meal_cache (day, lease_until) VALUES (?, ?)
+    ON CONFLICT(day) DO UPDATE SET lease_until = excluded.lease_until
+    WHERE neis_meal_cache.expires_at <= ? AND neis_meal_cache.lease_until <= ?`)
+    .bind(day, now + 30, now, now).run();
+  if (!lease.meta.changes) {
+    if (cached?.payload_json) return JSON.parse(cached.payload_json);
+    return { ...base, status: 'error', detail: '급식 정보를 조회하고 있어요. 잠시 후 다시 확인해 주세요.' };
+  }
+  let payload;
+  let ttl;
+  try {
+    const rows = await fetchNeisMealRows(env, day);
+    const meals = structuredMeals(rows);
+    const hasMeal = meals.some((meal) => meal.available);
+    payload = { ...base, meals, status: hasMeal ? 'ok' : 'no_meal', fetchedAt: new Date().toISOString() };
+    ttl = hasMeal ? 3600 : 1800;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    const diagnostic = /^NEIS (HTTP \d{3}|result [A-Za-z0-9_-]+|response too large|response empty)$/.test(message)
+      ? message : 'provider_request_failed';
+    console.error(JSON.stringify({ operation: 'neis_meal_read', diagnostic }));
+    payload = { ...base, status: 'error', fetchedAt: new Date().toISOString(),
+      detail: '급식 정보를 불러오지 못했어요. 잠시 후 다시 확인해 주세요.' };
+    ttl = error.cooldownSeconds || 300;
+  }
+  await env.DB.prepare(`UPDATE neis_meal_cache SET payload_json = ?, expires_at = ?, lease_until = 0
+    WHERE day = ?`).bind(JSON.stringify(payload), now + ttl, day).run();
+  return payload;
+}
+
+export async function mealsApi(request, env, path) {
+  if (path !== '/api/meals/today') return null;
+  if (request.method !== 'GET' || new URL(request.url).search) {
+    return response({ detail: 'Not found' }, 404);
+  }
+  const payload = await getMealsForDay(env, koreaDate(Date.now()));
+  return response(payload, payload.status === 'unconfigured' ? 503 : payload.status === 'error' ? 502 : 200);
+}
+
+async function fetchNeisMeals(env, day) {
+  const result = await getMealsForDay(env, day);
+  if (result.status !== 'ok') return null;
+  const body = result.meals.filter((meal) => meal.available)
+    .map((meal) => `${meal.name}: ${meal.dishes.join(', ')}`).join('\n');
   return body ? { title: `오늘 급식 · ${day}`, body: body.slice(0, 380),
-    url: '/', tag: `meal-${day}`, silent: true } : null;
+    url: '/meals', tag: `meal-${day}`, silent: true } : null;
 }
 
 async function deliverOnce(env, subscription, key, payload, tokenCache) {
