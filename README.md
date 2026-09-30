@@ -1,6 +1,6 @@
 # 2-4 cloud
 
-운영 주소: [2-4.cloud](https://2-4.cloud) · 공개 소스: [GitHub](https://github.com/fakeminjun7321/2-4-cloud)
+운영 주소: [2-4.cloud](https://2-4.cloud) · 공개 소스: [GitHub](https://github.com/fakeminjun7321/2-4cloud)
 
 자료실과 캘린더 두 탭으로 구성된 학급 사이트입니다. 자료는 과목과 담당 선생님별로 분류하며, 사진·PDF·시험범위 설명을 등록할 수 있습니다. 일정은 날짜, 유형, 과목, 선생님과 설명을 저장합니다. 학생은 비밀번호 없이 열람하고, 등록·수정·삭제는 관리자 로그인 후 가능합니다.
 

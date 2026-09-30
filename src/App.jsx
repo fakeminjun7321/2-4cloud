@@ -5,7 +5,7 @@ import Materials from './components/Materials.jsx';
 import Calendar from './components/Calendar.jsx';
 import NotificationSettings from './components/NotificationSettings.jsx';
 
-const GITHUB_REPOSITORY_URL = 'https://github.com/fakeminjun7321/2-4-cloud';
+const GITHUB_REPOSITORY_URL = 'https://github.com/fakeminjun7321/2-4cloud';
 
 function routeFromPath() {
   if (window.location.pathname === '/support') return 'support';
