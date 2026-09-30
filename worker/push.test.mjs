@@ -137,6 +137,22 @@ test('missing NEIS key, no meal, and provider error remain distinct and cached',
     assert.equal((await getMealsForDay(env, '2026-10-02')).status, 'error');
     assert.equal((await getMealsForDay(env, '2026-10-02')).status, 'error');
     assert.equal(calls, 2);
+    const diagnostics = [];
+    console.error = (message) => diagnostics.push(message);
+    globalThis.fetch = async (_url, options) => {
+      calls += 1;
+      assert.equal(options.redirect, 'manual');
+      return new Response('', { status: 302, headers: { Location: 'https://elsewhere.example/' } });
+    };
+    assert.equal((await getMealsForDay(env, '2026-10-03')).status, 'error');
+    assert.equal(calls, 3); // redirects are not followed with the key
+    globalThis.fetch = async () => {
+      calls += 1;
+      throw new TypeError('Fetch API cannot load https://open.neis.go.kr/?KEY=test-only');
+    };
+    assert.equal((await getMealsForDay(env, '2026-10-04')).status, 'error');
+    assert.equal(calls, 4);
+    assert.ok(diagnostics.every((entry) => !entry.includes('test-only')));
   } finally {
     globalThis.fetch = originalFetch;
     console.error = originalError;

@@ -304,7 +304,12 @@ async function fetchNeisMealRows(env, day) {
     SD_SCHUL_CODE: env.NEIS_SCHOOL_CODE,
     MLSV_YMD: day.replaceAll('-', ''),
   }).toString();
-  const result = await fetch(url, { redirect: 'error' });
+  // Inspect redirects instead of letting fetch throw, and never forward the key
+  // to a different destination through an automatic redirect.
+  const result = await fetch(url, { redirect: 'manual' }).catch((error) => {
+    if (error && typeof error === 'object') error.neisStage = 'fetch';
+    throw error;
+  });
   if (!result.ok) {
     const error = new Error(`NEIS HTTP ${result.status}`);
     if (result.status === 429 || result.status === 401 || result.status === 403) error.cooldownSeconds = 86400;
@@ -326,7 +331,13 @@ async function fetchNeisMealRows(env, day) {
     }
     chunks.push(value);
   }
-  const value = JSON.parse(new TextDecoder().decode(concat(...chunks)));
+  let value;
+  try {
+    value = JSON.parse(new TextDecoder().decode(concat(...chunks)));
+  } catch (error) {
+    if (error && typeof error === 'object') error.neisStage = 'parse';
+    throw error;
+  }
   const rows = value.mealServiceDietInfo?.[1]?.row;
   if (!Array.isArray(rows)) {
     const code = value.RESULT?.CODE || value.mealServiceDietInfo?.[0]?.head?.find((part) => part.RESULT)?.RESULT?.CODE;
@@ -380,7 +391,15 @@ export async function getMealsForDay(env, day) {
     const message = error instanceof Error ? error.message : '';
     const diagnostic = /^NEIS (HTTP \d{3}|result [A-Za-z0-9_-]+|response too large|response empty)$/.test(message)
       ? message : 'provider_request_failed';
-    console.error(JSON.stringify({ operation: 'neis_meal_read', diagnostic }));
+    const transportReason = error?.neisStage === 'fetch'
+      ? String(error.message || '').replaceAll(env.NEIS_API_KEY, '[redacted]')
+        .replace(/https?:\/\/[^\s)]+/gi, '[url]')
+        .replace(/\bKEY=[^\s&]+/gi, 'KEY=[redacted]')
+        .slice(0, 160)
+      : undefined;
+    console.error(JSON.stringify({ operation: 'neis_meal_read', diagnostic,
+      stage: error && typeof error === 'object' ? error.neisStage || 'other' : 'other',
+      errorType: error instanceof Error ? error.name : 'unknown', transportReason }));
     payload = { ...base, status: 'error', fetchedAt: new Date().toISOString(),
       detail: '급식 정보를 불러오지 못했어요. 잠시 후 다시 확인해 주세요.' };
     ttl = error.cooldownSeconds || 300;
