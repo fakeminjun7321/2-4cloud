@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
+import { classifyFilesLocally } from '../classifyLocal.js';
 import { Icon } from './Icons.jsx';
 import Modal from './Modal.jsx';
 
@@ -31,14 +32,30 @@ async function appendVerifiedFiles(form, files) {
 
 function MaterialForm({ subjects, teachers, refresh, notify, onClose }) {
   const [title, setTitle] = useState('');
-  const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '');
+  const [subjectId, setSubjectId] = useState('');
   const [teacherId, setTeacherId] = useState('');
-  const [kind, setKind] = useState('필기');
+  const [kind, setKind] = useState('');
   const [note, setNote] = useState('');
   const [files, setFiles] = useState([]);
+  const [localSuggestion, setLocalSuggestion] = useState(null);
+  const manual = useRef({ title: false, subject: false, teacher: false, kind: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const eligibleTeachers = teachers.filter((teacher) => teacher.subject_id === Number(subjectId));
+
+  function chooseFiles(selected) {
+    setFiles(selected);
+    const suggestion = classifyFilesLocally(selected, subjects, teachers);
+    setLocalSuggestion(selected.length ? suggestion : null);
+    if (!manual.current.title) setTitle(suggestion.suggested_title || '');
+    if (!manual.current.subject) setSubjectId(suggestion.subject_id === null ? '' : String(suggestion.subject_id));
+    if (!manual.current.kind) setKind(suggestion.kind || '');
+    if (!manual.current.teacher) {
+      const subject = manual.current.subject ? Number(subjectId) : suggestion.subject_id;
+      setTeacherId(suggestion.teacher_id && suggestion.subject_id === subject ? String(suggestion.teacher_id) : '');
+    }
+  }
+
   async function submit(event) {
     event.preventDefault();
     setError('');
@@ -65,15 +82,16 @@ function MaterialForm({ subjects, teachers, refresh, notify, onClose }) {
   return (
     <Modal title="자료 올리기" onClose={onClose}>
       <form className="form-stack" onSubmit={submit}>
-        <label>자료 제목<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={120} placeholder="예: 중간고사 시험범위" required autoFocus /></label>
+        <label>자료 제목<input value={title} onChange={(event) => { manual.current.title = true; setTitle(event.target.value); }} maxLength={120} placeholder="예: 중간고사 시험범위" required autoFocus /></label>
         <div className="form-row">
-          <label>과목<select value={subjectId} onChange={(event) => { setSubjectId(event.target.value); setTeacherId(''); }} required>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select></label>
-          <label>선생님<select value={teacherId} onChange={(event) => setTeacherId(event.target.value)}><option value="">선택 안 함</option>{eligibleTeachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}T</option>)}</select></label>
+          <label>과목<select value={subjectId} onChange={(event) => { manual.current.subject = true; manual.current.teacher = true; setSubjectId(event.target.value); setTeacherId(''); }} required><option value="">과목 선택</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}</select></label>
+          <label>선생님<select value={teacherId} onChange={(event) => { manual.current.teacher = true; setTeacherId(event.target.value); }} disabled={!subjectId}><option value="">선택 안 함</option>{eligibleTeachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}T</option>)}</select></label>
         </div>
-        <label>자료 유형<select value={kind} onChange={(event) => setKind(event.target.value)}>{['필기', '학습지', '시험범위', '기타'].map((type) => <option key={type}>{type}</option>)}</select></label>
+        <label>자료 유형<select value={kind} onChange={(event) => { manual.current.kind = true; setKind(event.target.value); }} required><option value="">유형 선택</option>{['필기', '학습지', '시험범위', '기타'].map((type) => <option key={type}>{type}</option>)}</select></label>
         <label>설명 또는 시험범위<textarea rows={4} value={note} onChange={(event) => setNote(event.target.value)} maxLength={4000} placeholder="파일 없이 글만 등록해도 돼요." /></label>
-        <label>사진 · PDF<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple onChange={(event) => setFiles(Array.from(event.target.files))} /><span className="field-help">파일당 최대 48MB · 한 번에 총 64MB, 24개까지</span></label>
+        <label>사진 · PDF<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple disabled={busy} onChange={(event) => chooseFiles(Array.from(event.target.files))} /><span className="field-help">파일당 최대 48MB · 한 번에 총 64MB, 24개까지</span></label>
         {files.length > 0 && <p className="selected-files">{files.length}개 파일 선택됨</p>}
+        {localSuggestion && <p className="filename-hint">{localSuggestion.ambiguous.includes('subject') ? '파일명에 과목 단서가 여러 개 있어요. 과목을 직접 확인해 주세요.' : localSuggestion.evidence.length ? '파일명에서 과목·선생님·유형 단서를 찾았어요. 입력값을 확인해 주세요.' : '파일명만으로 분류하기 어려워요. 과목과 유형을 직접 선택해 주세요.'}</p>}
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="form-actions"><button type="button" className="secondary-button" onClick={onClose}>취소</button><button className="primary-button" disabled={busy || !subjects.length}>{busy ? '등록 중…' : '등록하기'}</button></div>
       </form>
@@ -93,9 +111,13 @@ function MaterialDetail({ item, admin, onClose, refresh, notify }) {
   const activeIndex = Math.max(0, images.findIndex((file) => file.id === activeImageId));
   const activeImage = images[activeIndex];
 
+  function selectImage(id) {
+    setActiveImageId(id);
+  }
+
   function moveImage(step) {
     if (images.length < 2) return;
-    setActiveImageId(images[(activeIndex + step + images.length) % images.length].id);
+    selectImage(images[(activeIndex + step + images.length) % images.length].id);
   }
 
   function onGalleryKeyDown(event) {
@@ -167,7 +189,7 @@ function MaterialDetail({ item, admin, onClose, refresh, notify }) {
             <a className="secondary-button gallery-link download-link" href={`/api/files/${activeImage.id}?download=1`} download={activeImage.filename} aria-label={`${activeImage.filename} 다운로드`}><Icon name="download" size={16} />사진 다운로드</a>
           </div>
         </div>
-        <div className="gallery-thumbnails" aria-label="사진 선택">{images.map((file, index) => <button type="button" className={`gallery-thumb ${index === activeIndex ? 'active' : ''}`} key={file.id} onClick={() => setActiveImageId(file.id)} aria-label={`사진 ${index + 1} 보기: ${file.filename}`} aria-current={index === activeIndex ? 'true' : undefined} title={`${index + 1}. ${file.filename}`}>
+        <div className="gallery-thumbnails" aria-label="사진 선택">{images.map((file, index) => <button type="button" className={`gallery-thumb ${index === activeIndex ? 'active' : ''}`} key={file.id} onClick={() => selectImage(file.id)} aria-label={`사진 ${index + 1} 보기: ${file.filename}`} aria-current={index === activeIndex ? 'true' : undefined} title={`${index + 1}. ${file.filename}`}>
           <img src={`/api/files/${file.id}`} alt="" loading="lazy" />
           <span>{index + 1}</span>
         </button>)}</div>

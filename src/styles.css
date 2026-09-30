@@ -67,6 +67,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .material-row > svg { color: #8b9cb4; flex: none; }
 
 .calendar-heading { margin-bottom: 38px; }
+.calendar-add-hint { margin: -23px 0 15px; color: var(--muted); font-size: 13px; }
 .calendar-controls { display: flex; align-items: center; gap: 15px; }
 .event-add-button { margin-right: 20px; }
 .square-button { width: 46px; height: 46px; padding: 0; display: grid; place-items: center; }
@@ -79,7 +80,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .calendar-cell:nth-child(7n) { border-right: 0; }
 .calendar-cell:nth-last-child(-n + 7) { border-bottom: 0; }
 .calendar-cell.outside { background: #fcfdff; }
-.date-number { border: 0; padding: 0; min-width: 25px; height: 25px; border-radius: 50%; background: none; color: #344b70; font-size: 15px; line-height: 25px; text-align: center; }
+.date-number { display: inline-grid; place-items: center; border: 0; padding: 0; min-width: 32px; height: 32px; border-radius: 50%; background: none; color: #344b70; font-size: 15px; text-align: center; }
+button.date-number:hover { background: #e7f0ff; color: var(--blue); }
+button.date-number:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .is-today .date-number { color: white; background: var(--blue); font-weight: 700; }
 .day-events { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
 .event-chip { width: 100%; text-align: left; border: 0; border-radius: 4px; min-height: 24px; padding: 3px 6px; font-size: 12px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -103,6 +106,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .form-stack label { display: flex; flex-direction: column; gap: 8px; color: #314462; font-size: 14px; font-weight: 700; flex: 1; min-width: 0; }
 .form-stack input:not([type=file]), .form-stack select, .form-stack textarea { width: 100%; border: 1px solid #c9d4e3; border-radius: 8px; color: var(--navy); background: white; padding: 11px 12px; min-height: 45px; font-size: 15px; font-weight: 400; }
 .form-stack textarea { resize: vertical; line-height: 1.5; }
+.event-advanced { border-top: 1px solid var(--border); padding-top: 14px; }
+.event-title-hint { margin: -8px 0 0; padding: 9px 11px; border-radius: 7px; background: #eef6ff; color: #315579; font-size: 13px; line-height: 1.5; }
+.event-advanced summary { width: fit-content; cursor: pointer; color: var(--blue); font-size: 14px; font-weight: 700; }
+.event-advanced-fields { display: flex; flex-direction: column; gap: 18px; margin-top: 17px; }
 .form-stack input[type=file] { width: 100%; border: 1px dashed #b6c6da; border-radius: 8px; padding: 12px; color: var(--muted); font-size: 14px; font-weight: 400; }
 .form-stack input::placeholder, .form-stack textarea::placeholder { color: #9daac0; }
 .form-stack .checkbox-label { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; color: #314462; font-size: 14px; font-weight: 600; }
@@ -112,6 +119,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .field-help { font-size: 12px; color: var(--muted); font-weight: 400; }
 .selected-files { margin: -8px 0 0; color: var(--muted); font-size: 13px; }
 .form-error { color: #b5273d; background: #fff0f2; border-radius: 7px; margin: 0; padding: 11px 12px; font-size: 14px; }
+.filename-hint { margin: -8px 0 0; padding: 9px 11px; border-radius: 7px; background: #eef6ff; color: #315579; font-size: 13px; line-height: 1.5; }
 .form-actions { display: flex; gap: 9px; justify-content: flex-end; margin-top: 9px; }
 .form-actions .secondary-button { padding: 0 18px; }
 .full-button { width: 100%; }
@@ -233,7 +241,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .today-button { min-height: 38px; padding: 0 10px; font-size: 14px; margin-left: 3px; }
   .weekday { height: 36px; font-size: 13px; }
   .calendar-cell { min-height: 77px; padding: 4px; }
-  .date-number { font-size: 12px; width: 21px; min-width: 21px; height: 21px; line-height: 21px; }
+  .date-number { font-size: 12px; width: 30px; min-width: 30px; height: 30px; }
   .day-events { gap: 2px; margin-top: 2px; }
   .event-chip { font-size: 10px; min-height: 18px; padding: 2px 3px; }
   .more-events { font-size: 9px; }
@@ -266,6 +274,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .square-button { width: 34px; height: 34px; min-height: 34px; }
   .today-button { min-height: 34px; padding: 0 8px; }
   .calendar-cell { min-height: 65px; padding: 3px 2px; }
+  .date-number { width: 34px; min-width: 34px; height: 34px; }
+  .calendar-add-hint { font-size: 12px; }
   .event-chip { font-size: 0; width: 6px; height: 6px; min-height: 6px; padding: 0; border-radius: 50%; }
   .event-chip span { display: none; }
   .day-events { flex-direction: row; gap: 3px; }
