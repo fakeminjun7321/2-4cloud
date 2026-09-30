@@ -2,7 +2,8 @@
 // ADMIN_PASSWORD_SHA256 (secret; SHA-256 hex of the UTF-8 admin password).
 import { mealsApi, pushApi, sendDueNotifications } from './push.js';
 const SESSION_SECONDS = 12 * 60 * 60;
-const MAX_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_FILE_BYTES = 48 * 1024 * 1024;
+const LEGACY_HASH_LIMIT_BYTES = 20 * 1024 * 1024;
 const MAX_REQUEST_BYTES = 64 * 1024 * 1024;
 const MAX_FILES = 24;
 const MAX_JSON_BYTES = 16 * 1024;
@@ -59,7 +60,11 @@ async function sha256(value) {
 }
 
 async function sha256Blob(blob) {
-  return bytesToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())));
+  const source = typeof blob.stream === 'function' ? blob.stream() : blob.body;
+  if (!source) throw new Error('File body is not readable');
+  const digestStream = new crypto.DigestStream('SHA-256');
+  await source.pipeTo(digestStream);
+  return bytesToHex(new Uint8Array(await digestStream.digest));
 }
 
 function constantTimeHexEqual(left, right) {
@@ -183,10 +188,12 @@ function fileMime(name, signature) {
 
 async function preparedFiles(form) {
   const entries = form.getAll('files');
+  const suppliedDigests = form.getAll('sha256');
   if (entries.length > MAX_FILES) fail(400, `파일은 한 번에 ${MAX_FILES}개까지 올릴 수 있어요.`);
+  if (suppliedDigests.length && suppliedDigests.length !== entries.length) fail(400, '파일 검사 정보를 확인해 주세요.');
   let total = 0;
   const files = [];
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
     if (!entry || typeof entry.name !== 'string' || typeof entry.slice !== 'function') {
       fail(400, '파일을 확인해 주세요.');
     }
@@ -194,12 +201,20 @@ async function preparedFiles(form) {
     if (!filename || Array.from(filename).length > 180 || /[\x00-\x1f\x7f]/.test(filename)) {
       fail(400, '파일 이름을 확인해 주세요.');
     }
-    if (entry.size > MAX_FILE_BYTES) fail(413, '파일 하나는 20MB 이하로 올려 주세요.');
+    if (entry.size > MAX_FILE_BYTES) fail(413, '파일 하나는 48MB 이하로 올려 주세요.');
     total += entry.size;
     if (total > MAX_REQUEST_BYTES) fail(413, '한 번에 올릴 수 있는 용량을 초과했어요.');
     const signature = new Uint8Array(await entry.slice(0, 12).arrayBuffer());
+    const suppliedDigest = suppliedDigests[index];
+    if (suppliedDigest !== undefined && (typeof suppliedDigest !== 'string' || !/^[0-9a-f]{64}$/i.test(suppliedDigest))) {
+      fail(400, '파일 검사 정보를 확인해 주세요.');
+    }
+    if (!suppliedDigest && entry.size > LEGACY_HASH_LIMIT_BYTES) {
+      fail(400, '큰 파일을 올리려면 페이지를 새로고침한 뒤 다시 시도해 주세요.');
+    }
     files.push({ blob: entry, filename, mime: fileMime(filename, signature), size: entry.size,
-      digest: await sha256Blob(entry), storageName: crypto.randomUUID().replaceAll('-', '') });
+      digest: suppliedDigest ? suppliedDigest.toLowerCase() : await sha256Blob(entry),
+      storageName: crypto.randomUUID().replaceAll('-', '') });
   }
   return files;
 }
@@ -210,6 +225,7 @@ async function storeFiles(env, files) {
     for (const file of files) {
       const stored = await env.FILES.put(file.storageName, file.blob, {
         httpMetadata: { contentType: file.mime },
+        sha256: file.digest,
       });
       if (!stored) throw new Error('R2 put returned no object');
       written.push(file.storageName);

@@ -3,6 +3,32 @@ import { api } from '../api.js';
 import { Icon } from './Icons.jsx';
 import Modal from './Modal.jsx';
 
+const MAX_FILES = 24;
+const MAX_FILE_BYTES = 48 * 1024 * 1024;
+// Leave room for multipart field names, filenames, and boundaries inside the Worker request cap.
+const MAX_SELECTED_BYTES = 64 * 1024 * 1024 - 64 * 1024;
+
+function validateSelectedFiles(files) {
+  if (files.length > MAX_FILES) throw new Error(`파일은 한 번에 ${MAX_FILES}개까지 올릴 수 있어요.`);
+  if (files.some((file) => file.size > MAX_FILE_BYTES)) throw new Error('파일 하나는 48MB 이하로 올려 주세요.');
+  if (files.reduce((total, file) => total + file.size, 0) > MAX_SELECTED_BYTES) {
+    throw new Error('한 번에 올릴 수 있는 용량은 총 64MB예요. 파일을 나눠 올려 주세요.');
+  }
+}
+
+async function fileDigest(file) {
+  if (!crypto.subtle) throw new Error('파일 검사를 지원하지 않는 브라우저예요. 최신 브라우저에서 다시 시도해 주세요.');
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()));
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function appendVerifiedFiles(form, files) {
+  for (const file of files) {
+    form.append('files', file);
+    form.append('sha256', await fileDigest(file));
+  }
+}
+
 function MaterialForm({ subjects, teachers, refresh, notify, onClose }) {
   const [title, setTitle] = useState('');
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '');
@@ -18,14 +44,14 @@ function MaterialForm({ subjects, teachers, refresh, notify, onClose }) {
     setError('');
     setBusy(true);
     try {
+      validateSelectedFiles(files);
       const body = new FormData();
       body.append('title', title);
       body.append('subject_id', subjectId);
       body.append('kind', kind);
       body.append('note', note);
       if (teacherId) body.append('teacher_id', teacherId);
-      if (files.length > 24) throw new Error('파일은 한 번에 24개까지 올릴 수 있어요.');
-      files.forEach((file) => body.append('files', file));
+      await appendVerifiedFiles(body, files);
       await api('/materials', { method: 'POST', body });
       await refresh();
       notify('자료를 등록했어요.');
@@ -46,7 +72,7 @@ function MaterialForm({ subjects, teachers, refresh, notify, onClose }) {
         </div>
         <label>자료 유형<select value={kind} onChange={(event) => setKind(event.target.value)}>{['필기', '학습지', '시험범위', '기타'].map((type) => <option key={type}>{type}</option>)}</select></label>
         <label>설명 또는 시험범위<textarea rows={4} value={note} onChange={(event) => setNote(event.target.value)} maxLength={4000} placeholder="파일 없이 글만 등록해도 돼요." /></label>
-        <label>사진 · PDF<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple onChange={(event) => setFiles(Array.from(event.target.files))} /><span className="field-help">파일당 최대 20MB, 한 번에 최대 24개</span></label>
+        <label>사진 · PDF<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple onChange={(event) => setFiles(Array.from(event.target.files))} /><span className="field-help">파일당 최대 48MB · 한 번에 총 64MB, 24개까지</span></label>
         {files.length > 0 && <p className="selected-files">{files.length}개 파일 선택됨</p>}
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="form-actions"><button type="button" className="secondary-button" onClick={onClose}>취소</button><button className="primary-button" disabled={busy || !subjects.length}>{busy ? '등록 중…' : '등록하기'}</button></div>
@@ -86,14 +112,16 @@ function MaterialDetail({ item, admin, onClose, refresh, notify }) {
       setError('추가할 사진이나 PDF를 선택해 주세요.');
       return;
     }
-    if (newFiles.length > 24) {
-      setError('파일은 한 번에 24개까지 올릴 수 있어요.');
+    try {
+      validateSelectedFiles(newFiles);
+    } catch (failure) {
+      setError(failure.message);
       return;
     }
     setBusy(true);
     try {
       const body = new FormData();
-      newFiles.forEach((file) => body.append('files', file));
+      await appendVerifiedFiles(body, newFiles);
       await api(`/materials/${item.id}/attachments`, { method: 'POST', body });
       const fresh = await refresh();
       const updated = fresh.materials.find((material) => material.id === item.id);
@@ -136,7 +164,7 @@ function MaterialDetail({ item, admin, onClose, refresh, notify }) {
             <button type="button" className="secondary-button gallery-nav" onClick={() => moveImage(-1)} disabled={images.length < 2} aria-label="이전 사진">이전</button>
             <button type="button" className="secondary-button gallery-nav" onClick={() => moveImage(1)} disabled={images.length < 2} aria-label="다음 사진">다음</button>
             <a className="secondary-button gallery-link" href={`/api/files/${activeImage.id}`} target="_blank" rel="noreferrer">원본 열기</a>
-            <a className="icon-button" href={`/api/files/${activeImage.id}?download=1`} download={activeImage.filename} aria-label={`${activeImage.filename} 다운로드`}><Icon name="download" size={18} /></a>
+            <a className="secondary-button gallery-link download-link" href={`/api/files/${activeImage.id}?download=1`} download={activeImage.filename} aria-label={`${activeImage.filename} 다운로드`}><Icon name="download" size={16} />사진 다운로드</a>
           </div>
         </div>
         <div className="gallery-thumbnails" aria-label="사진 선택">{images.map((file, index) => <button type="button" className={`gallery-thumb ${index === activeIndex ? 'active' : ''}`} key={file.id} onClick={() => setActiveImageId(file.id)} aria-label={`사진 ${index + 1} 보기: ${file.filename}`} aria-current={index === activeIndex ? 'true' : undefined} title={`${index + 1}. ${file.filename}`}>
@@ -145,14 +173,21 @@ function MaterialDetail({ item, admin, onClose, refresh, notify }) {
         </button>)}</div>
         <p className="gallery-hint">사진을 선택하거나 ← → 키로 이동할 수 있어요.</p>
       </section>}
+      {images.length > 1 && <details className="image-download-list">
+        <summary>사진 파일 개별 다운로드 ({images.length}개)</summary>
+        <div className="attachment-list">{images.map((file, index) => <div className="attachment" key={file.id}>
+          <div className="attachment-name"><Icon name="file" size={20} /><span title={file.filename}>{index + 1}. {file.filename}</span></div>
+          <a className="secondary-button download-link" href={`/api/files/${file.id}?download=1`} download={file.filename} aria-label={`${file.filename} 다운로드`}><Icon name="download" size={16} />다운로드</a>
+        </div>)}</div>
+      </details>}
       {otherFiles.length > 0 && <div className="attachment-list">{otherFiles.map((file) => <div className="attachment" key={file.id}>
-        <div className="attachment-name"><Icon name="file" size={20} /><span>{file.filename}</span></div>
+        <div className="attachment-name"><Icon name="file" size={20} /><span title={file.filename}>{file.filename}</span></div>
         <a className="secondary-button" href={`/api/files/${file.id}`} target="_blank" rel="noreferrer">열기 <Icon name="chevronRight" size={15} /></a>
-        <a className="icon-button" href={`/api/files/${file.id}?download=1`} download={file.filename} aria-label={`${file.filename} 다운로드`}><Icon name="download" size={18} /></a>
+        <a className="secondary-button download-link" href={`/api/files/${file.id}?download=1`} download={file.filename} aria-label={`${file.filename} 다운로드`}><Icon name="download" size={16} />다운로드</a>
       </div>)}</div>}
       {admin && <>
         {addingFiles && <form className="append-files-form form-stack" onSubmit={appendFiles}>
-          <label>이 자료에 파일 추가<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple onChange={(event) => setNewFiles(Array.from(event.target.files))} /><span className="field-help">기존 파일은 그대로 두고 선택한 파일만 추가해요. 파일당 최대 20MB, 한 번에 최대 24개</span></label>
+          <label>이 자료에 파일 추가<input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" multiple onChange={(event) => setNewFiles(Array.from(event.target.files))} /><span className="field-help">기존 파일은 그대로 두고 선택한 파일만 추가해요. 파일당 최대 48MB · 한 번에 총 64MB, 24개까지</span></label>
           {newFiles.length > 0 && <p className="selected-files">{newFiles.length}개 파일 선택됨</p>}
           <div className="form-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => { setAddingFiles(false); setNewFiles([]); setError(''); }}>취소</button><button className="primary-button" disabled={busy || !newFiles.length}>{busy ? '추가 중…' : '파일 추가'}</button></div>
         </form>}
