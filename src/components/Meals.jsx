@@ -80,7 +80,7 @@ export default function Meals() {
       </div> : null}
 
       {!loading && ['ok', 'no_meal'].includes(result?.status) && result?.source === 'NEIS' &&
-        <p className="meals-source">자료 출처: 나이스(NEIS) 학교급식정보</p>}
+        <p className="meals-source">나이스 교육정보 개방 포털 데이터를 사용한 결과입니다.</p>}
     </section>
   );
 }
