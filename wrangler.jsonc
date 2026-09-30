@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "class-2-4-archive",
+  "main": "./worker/index.js",
+  "compatibility_date": "2026-09-30",
+  "triggers": { "crons": ["0 22 * * *"] },
+  "vars": {
+    "NEIS_EDUCATION_OFFICE_CODE": "D10",
+    "NEIS_SCHOOL_CODE": "7240060",
+    "VAPID_SUBJECT": "https://2-4.cloud"
+  },
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "2-4.cloud", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "class-2-4-db",
+      "database_id": "9a4f497f-d9fc-40d6-b01d-26efa3b26d96"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "class-2-4-files"
+    }
+  ],
+  "observability": { "enabled": true }
+}

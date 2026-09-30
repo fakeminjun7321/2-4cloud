@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.venv/
+.venv313/
+__pycache__/
+*.pyc
+server/data/
+server/admin-password.json
+server/
+tests/
+design/
+requirements.txt
+.env
+.dev.vars
+.wrangler/
