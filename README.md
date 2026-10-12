@@ -26,8 +26,11 @@ npx wrangler deploy
 
 ## 로컬 확인
 
+`npm test`는 단위 검사와 독립된 로컬 D1/R2에서의 로그인·업로드·다운로드 검사를 실행합니다. 운영 계정이나 실제 자료는 사용하지 않습니다.
+
 ```sh
 npm ci
+npm test
 npm run build
 npx wrangler d1 execute class-2-4-db --local --file=worker/schema.sql
 npx wrangler dev --local --port 8787

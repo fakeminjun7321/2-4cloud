@@ -1,4 +1,4 @@
-const CACHE_NAME = '2-4-cloud-shell-v1';
+const CACHE_NAME = '2-4-cloud-shell-v2';
 const SHELL_FILES = ['/', '/index.html', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -7,7 +7,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(Promise.all([
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))),
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith('2-4-cloud-shell-') && key !== CACHE_NAME).map((key) => caches.delete(key)))),
     self.clients.claim(),
   ]));
 });
@@ -17,11 +17,17 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
   event.respondWith((async () => {
+    // Vite content hashes change with the file: reuse these immutable assets on
+    // repeat visits instead of waiting for another network round trip.
+    if (/^\/assets\/.+-[\w-]{8,}\.[a-z0-9]+$/i.test(url.pathname)) {
+      const cached = await caches.match(event.request).catch(() => undefined);
+      if (cached) return cached;
+    }
     try {
       const response = await fetch(event.request);
       if (response.ok) {
-        const cache = await caches.open(CACHE_NAME);
-        await cache.put(event.request, response.clone());
+        const copy = response.clone();
+        event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {}));
       }
       return response;
     } catch {

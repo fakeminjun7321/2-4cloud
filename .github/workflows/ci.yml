@@ -21,5 +21,5 @@ jobs:
         run: npm ci
       - name: Build site
         run: npm run build
-      - name: Test notification logic
-        run: node --test worker/push.test.mjs
+      - name: Test API, downloads, cache, and notification logic
+        run: npm test
