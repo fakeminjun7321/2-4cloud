@@ -110,9 +110,28 @@ function MaterialDetail({ item, admin, onClose, refresh, notify }) {
   const otherFiles = item.attachments.filter((file) => !file.mime?.startsWith('image/'));
   const activeIndex = Math.max(0, images.findIndex((file) => file.id === activeImageId));
   const activeImage = images[activeIndex];
+  const [thumbnails, setThumbnails] = useState(() => new Map());
+  const [imageErrorId, setImageErrorId] = useState(null);
+  const [imageAttempt, setImageAttempt] = useState(0);
 
   function selectImage(id) {
     setActiveImageId(id);
+    setImageErrorId(null);
+  }
+
+  function rememberThumbnail(image, id) {
+    if (thumbnails.has(id)) return;
+    // Reuse pixels already downloaded for the large preview. Fetching original
+    // files for every tiny thumbnail competes with the selected image/download.
+    const canvas = document.createElement('canvas');
+    const scale = Math.min(188 / image.naturalWidth, 140 / image.naturalHeight, 1);
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const thumbnail = canvas.toDataURL('image/webp', 0.7);
+    setThumbnails((previous) => new Map(previous).set(id, thumbnail));
   }
 
   function moveImage(step) {
@@ -178,7 +197,13 @@ function MaterialDetail({ item, admin, onClose, refresh, notify }) {
       {item.note && <p className="detail-note">{item.note}</p>}
       {images.length > 0 && <section className="image-gallery" aria-label={`${item.title} 사진 ${images.length}장`} onKeyDown={onGalleryKeyDown}>
         <div className="gallery-main">
-          <img src={`/api/files/${activeImage.id}`} alt={`${item.title} 사진 ${activeIndex + 1}: ${activeImage.filename}`} />
+          {imageErrorId === activeImage.id ? <div className="gallery-error" role="alert">
+            <p>사진을 불러오지 못했어요.</p>
+            <button className="secondary-button" onClick={() => { setImageErrorId(null); setImageAttempt((attempt) => attempt + 1); }}>다시 시도</button>
+          </div> : <img key={`${activeImage.id}-${imageAttempt}`} src={`/api/files/${activeImage.id}`}
+            alt={`${item.title} 사진 ${activeIndex + 1}: ${activeImage.filename}`}
+            onLoad={(event) => rememberThumbnail(event.currentTarget, activeImage.id)}
+            onError={() => setImageErrorId(activeImage.id)} />}
         </div>
         <div className="gallery-toolbar">
           <div className="gallery-position" aria-live="polite">사진 {activeIndex + 1} / {images.length}</div>
@@ -190,10 +215,10 @@ function MaterialDetail({ item, admin, onClose, refresh, notify }) {
           </div>
         </div>
         <div className="gallery-thumbnails" aria-label="사진 선택">{images.map((file, index) => <button type="button" className={`gallery-thumb ${index === activeIndex ? 'active' : ''}`} key={file.id} onClick={() => selectImage(file.id)} aria-label={`사진 ${index + 1} 보기: ${file.filename}`} aria-current={index === activeIndex ? 'true' : undefined} title={`${index + 1}. ${file.filename}`}>
-          <img src={`/api/files/${file.id}`} alt="" loading="lazy" />
+          {thumbnails.has(file.id) ? <img src={thumbnails.get(file.id)} alt="" /> : <Icon name="file" size={24} />}
           <span>{index + 1}</span>
         </button>)}</div>
-        <p className="gallery-hint">사진을 선택하거나 ← → 키로 이동할 수 있어요.</p>
+        <p className="gallery-hint">사진을 선택하거나 ← → 키로 이동할 수 있어요. 선택한 사진부터 불러와요.</p>
       </section>}
       {images.length > 1 && <details className="image-download-list">
         <summary>사진 파일 개별 다운로드 ({images.length}개)</summary>

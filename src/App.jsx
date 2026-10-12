@@ -77,6 +77,7 @@ export default function App() {
   const refresh = useCallback(async () => {
     const fresh = await api('/bootstrap');
     setData(fresh);
+    setError('');
     setLoading(false);
     return fresh;
   }, []);

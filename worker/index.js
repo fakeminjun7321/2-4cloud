@@ -1,6 +1,7 @@
 // Cloudflare bindings: DB (D1), FILES (R2), ASSETS (static build),
 // ADMIN_PASSWORD_SHA256 (secret; SHA-256 hex of the UTF-8 admin password).
 import { mealsApi, pushApi, sendDueNotifications } from './push.js';
+import { serveFile } from './files.js';
 const SESSION_SECONDS = 12 * 60 * 60;
 const MAX_FILE_BYTES = 48 * 1024 * 1024;
 const LEGACY_HASH_LIMIT_BYTES = 20 * 1024 * 1024;
@@ -280,20 +281,23 @@ async function existingDigests(env, materialId) {
 }
 
 async function bootstrap(request, env) {
-  const [subjects, teachers, materials, attachments, events, admin] = await Promise.all([
-    env.DB.prepare('SELECT id, name FROM subjects ORDER BY id').all(),
-    env.DB.prepare('SELECT id, subject_id, name FROM teachers ORDER BY id').all(),
-    env.DB.prepare(`SELECT m.*, s.name AS subject_name, t.name AS teacher_name FROM materials m
+  const [rows, admin] = await Promise.all([
+    env.DB.batch([
+      env.DB.prepare('SELECT id, name FROM subjects ORDER BY id'),
+      env.DB.prepare('SELECT id, subject_id, name FROM teachers ORDER BY id'),
+      env.DB.prepare(`SELECT m.*, s.name AS subject_name, t.name AS teacher_name FROM materials m
       JOIN subjects s ON s.id = m.subject_id LEFT JOIN teachers t ON t.id = m.teacher_id
-      ORDER BY m.created_at DESC, m.id DESC`).all(),
-    env.DB.prepare('SELECT id, material_id, filename, mime, size FROM attachments ORDER BY id').all(),
-    env.DB.prepare(`SELECT e.*, COALESCE(n.notify_enabled, 1) AS notify_enabled,
+      ORDER BY m.created_at DESC, m.id DESC`),
+      env.DB.prepare('SELECT id, material_id, filename, mime, size FROM attachments ORDER BY id'),
+      env.DB.prepare(`SELECT e.*, COALESCE(n.notify_enabled, 1) AS notify_enabled,
       s.name AS subject_name, t.name AS teacher_name FROM events e
       LEFT JOIN event_notification_settings n ON n.event_id = e.id
       LEFT JOIN subjects s ON s.id = e.subject_id LEFT JOIN teachers t ON t.id = e.teacher_id
-      ORDER BY e.event_date, e.id`).all(),
+      ORDER BY e.event_date, e.id`),
+    ]),
     isAdmin(request, env),
   ]);
+  const [subjects, teachers, materials, attachments, events] = rows;
   const byMaterial = new Map();
   for (const file of attachments.results) {
     if (!byMaterial.has(file.material_id)) byMaterial.set(file.material_id, []);
@@ -422,24 +426,11 @@ async function deleteMaterial(request, env, materialId) {
   return json({ deleted: true });
 }
 
-function contentDisposition(filename, download) {
-  const fallback = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\;]/g, '_');
-  return `${download ? 'attachment' : 'inline'}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
-}
-
-async function getFile(request, env, attachmentId) {
+async function getFile(request, env, attachmentId, ctx) {
   const file = await env.DB.prepare('SELECT filename, mime, size, storage_name FROM attachments WHERE id = ?')
     .bind(attachmentId).first();
   if (!file) fail(404, '파일을 찾을 수 없어요.');
-  const object = await env.FILES.get(file.storage_name);
-  if (!object?.body) fail(404, '파일을 찾을 수 없어요.');
-  const headers = new Headers({
-    'Content-Type': file.mime,
-    'Content-Length': String(object.size),
-    'Content-Disposition': contentDisposition(file.filename, new URL(request.url).searchParams.get('download') === '1'),
-    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
-  });
-  return new Response(request.method === 'HEAD' ? null : object.body, { status: 200, headers });
+  return serveFile(request, env.FILES, file, ctx);
 }
 
 async function checkedEvent(request, env) {
@@ -491,7 +482,7 @@ async function deleteEvent(request, env, eventId) {
   return json({ deleted: true });
 }
 
-async function api(request, env, path) {
+async function api(request, env, path, ctx) {
   const method = request.method;
   if (!['GET', 'HEAD'].includes(method)) requireSameOrigin(request);
   if (path.startsWith('/api/meals/')) {
@@ -512,7 +503,7 @@ async function api(request, env, path) {
   const appendId = routeId(path, /^\/api\/materials\/(\d+)\/attachments$/);
   if (method === 'POST' && appendId !== null) return appendFiles(request, env, appendId);
   const attachmentId = routeId(path, /^\/api\/files\/(\d+)$/);
-  if (['GET', 'HEAD'].includes(method) && attachmentId !== null) return getFile(request, env, attachmentId);
+  if (['GET', 'HEAD'].includes(method) && attachmentId !== null) return getFile(request, env, attachmentId, ctx);
   if (method === 'POST' && path === '/api/events') return addEvent(request, env);
   const eventId = routeId(path, /^\/api\/events\/(\d+)$/);
   if (method === 'PUT' && eventId !== null) return updateEvent(request, env, eventId);
@@ -521,12 +512,12 @@ async function api(request, env, path) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     let response;
     const path = new URL(request.url).pathname;
     try {
       if (path.startsWith('/api/')) {
-        response = await api(request, env, path);
+        response = await api(request, env, path, ctx);
       } else if (request.method === 'GET' || request.method === 'HEAD') {
         response = await env.ASSETS.fetch(request);
         if (response.status === 404 && !path.includes('.')) {
@@ -545,7 +536,7 @@ export default {
     const wrapped = new Response(response.body, response);
     wrapped.headers.set('X-Content-Type-Options', 'nosniff');
     wrapped.headers.set('Referrer-Policy', 'same-origin');
-    if (path.startsWith('/api/')) wrapped.headers.set('Cache-Control', 'no-store');
+    if (path.startsWith('/api/') && !wrapped.headers.has('Cache-Control')) wrapped.headers.set('Cache-Control', 'no-store');
     return wrapped;
   },
   async scheduled(controller, env) {

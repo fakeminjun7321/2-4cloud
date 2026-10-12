@@ -130,6 +130,7 @@ button.date-number:focus-visible { outline: 2px solid var(--blue); outline-offse
 .image-gallery { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 0 0 24px; background: #f5f7fb; }
 .gallery-main { min-height: 220px; display: grid; place-items: center; background: #17233a; }
 .gallery-main img { display: block; width: 100%; max-height: min(44vh, 560px); object-fit: contain; }
+.gallery-error { padding: 24px; color: #fff; text-align: center; }
 .gallery-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 14px; background: #fff; }
 .gallery-position { color: #344765; font-size: 14px; font-weight: 700; white-space: nowrap; }
 .gallery-actions { display: flex; align-items: center; gap: 7px; }
